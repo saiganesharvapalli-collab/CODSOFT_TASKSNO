@@ -1,115 +1,116 @@
+"""Train, compare, evaluate, and persist the Iris classifiers."""
+
+from __future__ import annotations
+
+import sys
 from pathlib import Path
 
-import joblib
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-from sklearn.base import clone
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-	accuracy_score,
-	confusion_matrix,
-	f1_score,
-	precision_score,
-	recall_score,
-	roc_auc_score,
+from sklearn.metrics import ConfusionMatrixDisplay
+
+from model_utils import (
+    ROOT_DIR,
+    DatasetError,
+    load_dataset,
+    save_metadata,
+    save_model,
+    train_models,
 )
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier
-
-from model_utils import MODEL_PATH, build_pipeline, load_dataset
 
 
-def build_model_candidates():
-	return {
-		"Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
-		"Decision Tree": DecisionTreeClassifier(random_state=42),
-		"Random Forest": RandomForestClassifier(
-			n_estimators=300,
-			random_state=42,
-			n_jobs=-1,
-		),
-	}
+def create_training_charts(result, output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metrics = result.metadata["test_metrics"]
+    display = ConfusionMatrixDisplay(
+        confusion_matrix=np.asarray(metrics["confusion_matrix"]),
+        display_labels=result.metadata["class_labels"],
+    )
+    display.plot(cmap="Blues", colorbar=False, values_format="d")
+    plt.title(f"Test-set confusion matrix — {result.selected_model_name}")
+    plt.xlabel("Predicted species")
+    plt.ylabel("Actual species")
+    plt.xticks(rotation=20, ha="right")
+    plt.tight_layout()
+    plt.savefig(output_dir / "selected_model_confusion_matrix.png", dpi=160)
+    plt.close()
+
+    classifier = result.selected_model.named_steps["classifier"]
+    importances = getattr(classifier, "feature_importances_", None)
+    if importances is not None:
+        importance_frame = pd.DataFrame(
+            {"feature": result.metadata["feature_names"], "importance": importances}
+        ).sort_values("importance", ascending=True)
+        axis = importance_frame.plot.barh(
+            x="feature",
+            y="importance",
+            legend=False,
+            color="#2878a5",
+            figsize=(8, 4.5),
+        )
+        axis.set_title(f"Feature importance — {result.selected_model_name}")
+        axis.set_xlabel("Relative importance")
+        axis.set_ylabel("Measurement")
+        plt.tight_layout()
+        plt.savefig(output_dir / "selected_model_feature_importance.png", dpi=160)
+        plt.close()
 
 
-def train_and_save(output_path=MODEL_PATH):
-	features, target = load_dataset()
-	train_features, validation_features, train_target, validation_target = (
-		train_test_split(
-			features,
-			target,
-			test_size=0.2,
-			random_state=42,
-			stratify=target,
-		)
-	)
+def main() -> int:
+    try:
+        dataset = load_dataset()
+        print(f"Dataset: {dataset.path.name}")
+        print(f"Path: {dataset.path}")
+        print(f"Shape: {dataset.frame.shape[0]} rows x {dataset.frame.shape[1]} columns")
+        print(f"Features: {', '.join(dataset.feature_names)}")
+        print(f"Target: {dataset.target_column}")
+        print(f"Species counts: {dataset.frame['species'].value_counts().to_dict()}")
 
-	results = []
-	validation_confusion_matrices = {}
-	candidates = build_model_candidates()
+        result = train_models(dataset)
+        models_dir = ROOT_DIR / "models"
+        reports_dir = ROOT_DIR / "reports"
+        charts_dir = ROOT_DIR / "outputs" / "charts"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        reports_dir.mkdir(parents=True, exist_ok=True)
 
-	for model_name, estimator in candidates.items():
-		pipeline = build_pipeline(clone(estimator))
-		pipeline.fit(train_features, train_target)
-		predictions = pipeline.predict(validation_features)
-		probabilities = pipeline.predict_proba(validation_features)[:, 1]
+        create_training_charts(result, charts_dir)
+        result.comparison.sort_values(
+            by=["cv_macro_f1_mean", "test_f1_macro"],
+            ascending=[False, False],
+            na_position="last",
+        ).to_csv(reports_dir / "model_comparison.csv", index=False)
+        save_model(result.selected_model, models_dir / "best_model.pkl")
+        save_metadata(result.metadata, models_dir / "model_metadata.json")
 
-		results.append(
-			{
-				"model_name": model_name,
-				"accuracy": float(accuracy_score(validation_target, predictions)),
-				"precision": float(
-					precision_score(validation_target, predictions, zero_division=0)
-				),
-				"recall": float(
-					recall_score(validation_target, predictions, zero_division=0)
-				),
-				"f1": float(f1_score(validation_target, predictions, zero_division=0)),
-				"roc_auc": float(roc_auc_score(validation_target, probabilities)),
-			}
-		)
-		validation_confusion_matrices[model_name] = confusion_matrix(
-			validation_target,
-			predictions,
-			labels=[0, 1],
-		).tolist()
-
-	results.sort(key=lambda result: (result["roc_auc"], result["f1"]), reverse=True)
-	selected_name = results[0]["model_name"]
-
-	# Refit the selected pipeline on all available rows after validation is complete.
-	final_model = build_pipeline(clone(candidates[selected_name]))
-	final_model.fit(features, target)
-
-	artifact = {
-		"model": final_model,
-		"model_name": selected_name,
-		"features": features.columns.tolist(),
-		"model_comparison": results,
-		"validation_metrics": results[0],
-		"validation_confusion_matrices": validation_confusion_matrices,
-		"validation": {
-			"strategy": "Stratified 80/20 hold-out split",
-			"test_size": 0.2,
-			"random_state": 42,
-			"selection_rule": "Highest validation ROC-AUC; F1-score breaks ties",
-		},
-	}
-
-	output_path = Path(output_path)
-	output_path.parent.mkdir(parents=True, exist_ok=True)
-	joblib.dump(artifact, output_path)
-
-	print(f"Saved final model: {selected_name}")
-	print(f"Artifact: {output_path}")
-	print("Validation results:")
-	print(
-		pd.DataFrame(results).to_string(
-			index=False,
-			float_format=lambda value: f"{value:.3f}",
-		)
-	)
-	return artifact
+        print(f"\nSelected model: {result.selected_model_name}")
+        print(f"Selection criteria: {result.metadata['model_selection_criteria']}")
+        print("\nActual held-out test results (macro precision/recall/F1):")
+        print(
+            result.comparison[
+                [
+                    "model",
+                    "cv_macro_f1_mean",
+                    "test_accuracy",
+                    "test_precision_macro",
+                    "test_recall_macro",
+                    "test_f1_macro",
+                ]
+            ].to_string(index=False, float_format=lambda value: f"{value:.3f}")
+        )
+        print(f"\nSaved model: {models_dir / 'best_model.pkl'}")
+        print(f"Saved metadata: {models_dir / 'model_metadata.json'}")
+        print(f"Saved comparison: {reports_dir / 'model_comparison.csv'}")
+        print(f"Saved performance charts: {charts_dir}")
+        return 0
+    except DatasetError as exc:
+        print(f"Dataset error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-	train_and_save()
+    raise SystemExit(main())

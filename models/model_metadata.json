@@ -1,0 +1,131 @@
+{
+  "selected_model": "Logistic regression",
+  "feature_names": [
+    "sepal_length",
+    "sepal_width",
+    "petal_length",
+    "petal_width"
+  ],
+  "target_column": "species",
+  "normalized_target_column": "species",
+  "class_labels": [
+    "Iris-setosa",
+    "Iris-versicolor",
+    "Iris-virginica"
+  ],
+  "training_configuration": {
+    "random_seed": 42,
+    "test_size": 0.2,
+    "split_strategy": "stratified",
+    "cross_validation": "5-fold stratified cross-validation on training data",
+    "cross_validation_folds": 5,
+    "metrics_averaging": "macro",
+    "preprocessing": "Median imputation fitted inside each training pipeline; standard scaling for logistic regression, KNN, and SVM only."
+  },
+  "cross_validation_macro_f1": {
+    "Dummy classifier": 0.16666666666666666,
+    "Logistic regression": 0.9579707438530969,
+    "K-nearest neighbors": 0.9579707438530969,
+    "Decision tree": 0.9496047307812013,
+    "Random forest": 0.9494055399937753,
+    "Support vector machine": 0.9665359477124185
+  },
+  "cross_validation_macro_f1_std": {
+    "Dummy classifier": 0.0,
+    "Logistic regression": 0.02677171608964413,
+    "K-nearest neighbors": 0.02677171608964413,
+    "Decision tree": 0.017130407718643027,
+    "Random forest": 0.03172953563462674,
+    "Support vector machine": 0.016732026143790834
+  },
+  "test_metrics": {
+    "accuracy": 0.9333333333333333,
+    "precision_macro": 0.9333333333333332,
+    "recall_macro": 0.9333333333333332,
+    "f1_macro": 0.9333333333333332,
+    "confusion_matrix": [
+      [
+        10,
+        0,
+        0
+      ],
+      [
+        0,
+        9,
+        1
+      ],
+      [
+        0,
+        1,
+        9
+      ]
+    ],
+    "classification_report": {
+      "Iris-setosa": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 10.0
+      },
+      "Iris-versicolor": {
+        "precision": 0.9,
+        "recall": 0.9,
+        "f1-score": 0.9,
+        "support": 10.0
+      },
+      "Iris-virginica": {
+        "precision": 0.9,
+        "recall": 0.9,
+        "f1-score": 0.9,
+        "support": 10.0
+      },
+      "accuracy": 0.9333333333333333,
+      "macro avg": {
+        "precision": 0.9333333333333332,
+        "recall": 0.9333333333333332,
+        "f1-score": 0.9333333333333332,
+        "support": 30.0
+      },
+      "weighted avg": {
+        "precision": 0.9333333333333333,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.9333333333333333,
+        "support": 30.0
+      }
+    }
+  },
+  "dataset_filename": "IRIS.csv",
+  "dataset_path": "C:\\Users\\saiga\\OneDrive\\Desktop\\Iris-Flower-Classification\\data\\IRIS.csv",
+  "dataset_shape": [
+    150,
+    5
+  ],
+  "training_timestamp_utc": "2026-10-27T14:38:40.104241+00:00",
+  "model_selection_criteria": "Highest mean stratified training cross-validation macro F1-score; models within 0.01 are resolved using the documented simplicity/interpretability order.",
+  "model_priority_for_similar_scores": [
+    "Logistic regression",
+    "Decision tree",
+    "K-nearest neighbors",
+    "Support vector machine",
+    "Random forest",
+    "Dummy classifier"
+  ],
+  "data_quality": {
+    "missing_values_by_column": {
+      "sepal_length": 0,
+      "sepal_width": 0,
+      "petal_length": 0,
+      "petal_width": 0,
+      "species": 0
+    },
+    "duplicate_rows_retained": 3,
+    "identifier_columns_excluded": [],
+    "other_columns_ignored": []
+  },
+  "units": {
+    "sepal_length": "unspecified",
+    "sepal_width": "unspecified",
+    "petal_length": "unspecified",
+    "petal_width": "unspecified"
+  }
+}

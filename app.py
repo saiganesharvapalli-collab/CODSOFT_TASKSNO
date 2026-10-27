@@ -1,481 +1,336 @@
-import matplotlib.pyplot as plt
+"""Streamlit dashboard for exploring data and predicting Iris species."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
 import pandas as pd
-import seaborn as sns
 import streamlit as st
 
-from model_utils import load_model, load_raw_dataset, predict_passenger
-
+from model_utils import (
+    FEATURE_LABELS,
+    FEATURE_NAMES,
+    ROOT_DIR,
+    DatasetError,
+    find_dataset,
+    load_dataset,
+    load_metadata,
+    load_model,
+    predict_probabilities,
+    predict_species,
+)
 
 st.set_page_config(
-    page_title="Titanic Survival Prediction",
-    page_icon=":material/directions_boat:",
+    page_title="Iris flower classification",
+    page_icon="🌸",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
-sns.set_theme(
-    style="whitegrid",
-    rc={"axes.spines.top": False, "axes.spines.right": False},
-)
+MODEL_PATH = ROOT_DIR / "models" / "best_model.pkl"
+METADATA_PATH = ROOT_DIR / "models" / "model_metadata.json"
+COMPARISON_PATH = ROOT_DIR / "reports" / "model_comparison.csv"
+CHARTS_DIR = ROOT_DIR / "outputs" / "charts"
 
 
-@st.cache_resource
-def get_model_artifact():
-    return load_model()
+@st.cache_data(ttl="10m", max_entries=2, show_spinner="Loading the Iris dataset...")
+def cached_dataset(path: str, modified_time: float):
+    del modified_time
+    return load_dataset(path)
 
 
-@st.cache_data
-def get_dataset():
-    return load_raw_dataset()
+@st.cache_resource(max_entries=2, show_spinner=False)
+def cached_model(path: str, modified_time: float):
+    del modified_time
+    return load_model(path)
 
 
-def render_page_heading(title, description):
-    st.header(title)
-    st.caption(description)
+@st.cache_data(ttl="10m", max_entries=2, show_spinner=False)
+def cached_metadata(path: str, modified_time: float):
+    del modified_time
+    return load_metadata(path)
 
 
-def render_confusion_matrix(model_name, values):
-    figure, axis = plt.subplots(figsize=(6, 4), constrained_layout=True)
-    sns.heatmap(
-        values,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        cbar=False,
-        square=True,
-        linewidths=1,
-        linecolor="#FFFFFF",
-        xticklabels=["Did not survive", "Survived"],
-        yticklabels=["Did not survive", "Survived"],
-        annot_kws={"size": 12, "weight": "bold"},
-        ax=axis,
-    )
-    axis.set_title(f"{model_name} · validation results", loc="left", pad=14)
-    axis.set_xlabel("Predicted outcome", labelpad=10)
-    axis.set_ylabel("Actual outcome", labelpad=10)
-    st.pyplot(figure)
-    plt.close(figure)
+@st.cache_data(ttl="10m", max_entries=2, show_spinner=False)
+def cached_comparison(path: str, modified_time: float) -> pd.DataFrame:
+    del modified_time
+    return pd.read_csv(path)
 
 
-st.title("Titanic Survival Prediction", icon=":material/directions_boat:")
-st.badge("Machine learning application", icon=":material/analytics:", color="blue")
-st.caption("A supervised machine-learning study of passenger survival outcomes.")
+def _file_revision(path: Path) -> float:
+    return path.stat().st_mtime if path.is_file() else 0.0
+
+
+def _species_title(label: str) -> str:
+    return label.replace("Iris-", "").replace("_", " ").title()
+
+
+def _metric_row(metrics: dict) -> None:
+    with st.container(horizontal=True):
+        st.metric("Accuracy", f"{metrics['accuracy']:.1%}", border=True)
+        st.metric(
+            "Macro precision", f"{metrics['precision_macro']:.1%}", border=True
+        )
+        st.metric("Macro recall", f"{metrics['recall_macro']:.1%}", border=True)
+        st.metric("Macro F1-score", f"{metrics['f1_macro']:.1%}", border=True)
+
 
 try:
-    artifact = get_model_artifact()
-except FileNotFoundError as error:
-    st.error(str(error))
-    st.code("python train.py")
+    dataset_path = find_dataset()
+    dataset = cached_dataset(str(dataset_path), _file_revision(dataset_path))
+except DatasetError as exc:
+    st.error(f"Dataset problem: {exc}")
     st.stop()
-except Exception as error:
-    st.error(f"Could not load the saved model: {error}")
-    st.stop()
+
+model = None
+metadata = None
+model_error = None
+try:
+    model = cached_model(str(MODEL_PATH), _file_revision(MODEL_PATH))
+    metadata = cached_metadata(str(METADATA_PATH), _file_revision(METADATA_PATH))
+except (FileNotFoundError, RuntimeError) as exc:
+    model_error = str(exc)
 
 with st.sidebar:
-    st.subheader("Workspace")
+    st.title("Iris classifier")
     page = st.radio(
-        "Navigate to a section",
-        ["Survival prediction", "Model performance", "Dataset insights"],
+        "Project sections",
+        [
+            "Home",
+            "Predict species",
+            "Dataset explorer",
+            "Model performance",
+            "About",
+        ],
         label_visibility="visible",
     )
-    st.space("small")
-    st.caption("SELECTED MODEL")
-    st.markdown(f"**{artifact['model_name']}**")
-    st.caption(
-        f"Validation ROC-AUC · {artifact['validation_metrics']['roc_auc']:.1%}"
+    st.caption("A supervised machine-learning project using the local dataset.")
+
+frame = dataset.frame
+species_labels = sorted(frame["species"].unique(), key=str.casefold)
+
+if page == "Home":
+    st.title("Iris flower classification")
+    st.write(
+        "Explore the measurements in the provided Iris dataset and use a trained "
+        "machine-learning model to estimate a flower's species."
+    )
+    st.subheader("What does classification mean?")
+    st.write(
+        "A classifier learns patterns from labeled examples. Here, four flower "
+        "measurements are used to predict one of the species present in the dataset."
     )
 
+    with st.container(horizontal=True):
+        st.metric("Dataset records", f"{len(frame):,}", border=True)
+        st.metric("Input measurements", len(FEATURE_NAMES), border=True)
+        st.metric("Recognized species", frame["species"].nunique(), border=True)
+        st.metric(
+            "Selected model",
+            metadata["selected_model"] if metadata else "Not trained",
+            border=True,
+        )
 
-if page == "Survival prediction":
-    render_page_heading(
-        "Predict Titanic Survival",
-        "Enter passenger details to estimate survival using a trained machine-learning model.",
+    st.subheader("Species in this dataset")
+    st.write(", ".join(_species_title(label) for label in species_labels))
+    st.subheader("How it works")
+    st.write(
+        "1. The dataset is validated and its measurement columns are identified.  "
+        "2. Candidate classifiers are compared using training-only cross-validation.  "
+        "3. The selected model is evaluated once on a held-out test set.  "
+        "4. Enter four measurements to receive a prediction."
     )
+    if metadata:
+        st.subheader("Selected model's held-out test results")
+        _metric_row(metadata["test_metrics"])
+    else:
+        st.warning(
+            "No trained model is available. Run `python train.py` from the project "
+            "folder before viewing model metrics or making predictions."
+        )
 
-    form_column, result_column = st.columns([1.1, 0.9], gap="large")
-
-    with form_column.container(border=True):
-        st.subheader("Passenger information")
-        with st.form("passenger_details", border=False):
-            st.caption("PASSENGER DETAILS")
-            class_column, gender_column = st.columns(2)
-            with class_column:
-                pclass = st.selectbox("Passenger class", [1, 2, 3], index=2)
-            with gender_column:
-                sex = st.selectbox("Gender", ["female", "male"])
-            age = st.number_input(
-                "Age in years",
-                min_value=0.0,
-                max_value=100.0,
-                value=25.0,
-                help="Choose an age between 0 and 100 years.",
-            )
-
-            st.caption("FAMILY INFORMATION")
-            siblings_column, parents_column = st.columns(2)
-            with siblings_column:
-                sibsp = st.number_input(
-                    "Siblings and spouses",
-                    min_value=0,
-                    max_value=10,
-                    value=0,
-                    help="Number of siblings or spouses traveling with the passenger.",
-                )
-            with parents_column:
-                parch = st.number_input(
-                    "Parents and children",
-                    min_value=0,
-                    max_value=10,
-                    value=0,
-                    help="Number of parents or children traveling with the passenger.",
-                )
-
-            st.caption("TRAVEL INFORMATION")
-            fare_column, port_column = st.columns(2)
-            with fare_column:
-                fare = st.number_input(
-                    "Ticket fare",
-                    min_value=0.0,
-                    max_value=1000.0,
-                    value=32.0,
-                    help="Fare paid for the ticket, in historical dataset units.",
-                )
-            with port_column:
-                embarked = st.selectbox(
-                    "Port of embarkation",
-                    ["S", "C", "Q"],
-                    format_func=lambda value: {
-                        "S": "Southampton",
-                        "C": "Cherbourg",
-                        "Q": "Queenstown",
-                    }[value],
-                )
-
+elif page == "Predict species":
+    st.title("Predict an Iris species")
+    st.write(
+        "Enter the four measurements in the same order used to train the model. "
+        "Units are not shown because the dataset's column names do not specify them."
+    )
+    if model is None or metadata is None:
+        st.error(model_error or "The trained model is not available.")
+        st.info("Run `python train.py` from the project folder, then refresh this page.")
+    else:
+        with st.form("prediction_form"):
+            columns = st.columns(2)
+            measurements = {}
+            for position, feature in enumerate(FEATURE_NAMES):
+                with columns[position % 2]:
+                    measurements[feature] = st.number_input(
+                        FEATURE_LABELS[feature],
+                        value=float(frame[feature].median()),
+                        format="%.2f",
+                        step=0.1,
+                        key=f"input_{feature}",
+                    )
             submitted = st.form_submit_button(
-                "Predict Survival",
-                type="primary",
-                width="stretch",
-                icon=":material/query_stats:",
+                "Predict species", type="primary", icon=":material/search:"
             )
-
-    if submitted:
-        passenger = {
-            "pclass": pclass,
-            "sex": sex,
-            "age": age,
-            "sibsp": sibsp,
-            "parch": parch,
-            "fare": fare,
-            "embarked": embarked,
-        }
-        st.session_state.pop("prediction_result", None)
-        st.session_state.pop("prediction_error", None)
-        try:
-            with st.spinner("Calculating the prediction..."):
-                prediction, probability = predict_passenger(
-                    artifact["model"], passenger
+        if submitted:
+            try:
+                prediction = predict_species(
+                    model, measurements, metadata["feature_names"]
                 )
-            st.session_state["prediction_result"] = {
-                "passenger": passenger,
-                "prediction": prediction,
-                "probability": probability,
-            }
-        except (TypeError, ValueError, KeyError) as error:
-            st.session_state["prediction_error"] = str(error)
-        except Exception as error:
-            st.session_state["prediction_error"] = (
-                f"The prediction could not be completed: {error}"
-            )
-
-    with result_column.container(border=True):
-        st.subheader("Prediction result")
-        if error_message := st.session_state.get("prediction_error"):
-            st.error(error_message)
-        elif result := st.session_state.get("prediction_result"):
-            prediction = result["prediction"]
-            probability = result["probability"]
-            if prediction == 1:
-                st.success(
-                    "PASSENGER PREDICTED TO SURVIVE",
-                    icon=":material/check_circle:",
+                st.success(f"Predicted species: **{_species_title(prediction)}**")
+                probabilities = predict_probabilities(
+                    model, measurements, metadata["feature_names"]
                 )
-            else:
-                st.warning(
-                    "PASSENGER PREDICTED NOT TO SURVIVE",
-                    icon=":material/error:",
-                )
-
-            if probability is not None:
-                survival_column, non_survival_column = st.columns(2)
-                survival_column.metric("Survival probability", f"{probability:.1%}")
-                non_survival_column.metric(
-                    "Non-survival probability", f"{1 - probability:.1%}"
-                )
-                st.progress(probability)
+                if probabilities:
+                    probability_frame = pd.DataFrame(
+                        {
+                            "Species": [
+                                _species_title(label) for label in probabilities
+                            ],
+                            "Probability": list(probabilities.values()),
+                        }
+                    )
+                    st.subheader("Model class probabilities")
+                    st.bar_chart(
+                        probability_frame,
+                        x="Species",
+                        y="Probability",
+                        y_label="Probability",
+                    )
                 st.caption(
-                    "Probabilities are the model's estimates for this passenger; "
-                    "they are not guarantees."
+                    "This prediction is produced by the trained model and is not "
+                    "guaranteed to be correct."
                 )
-            else:
-                st.caption("This model does not provide probability estimates.")
+            except ValueError as exc:
+                st.error(f"Invalid measurements: {exc}")
 
-            passenger = result["passenger"]
-            passenger_summary = pd.DataFrame(
-                {
-                    "Passenger detail": [
-                        "Passenger class",
-                        "Gender",
-                        "Age",
-                        "Siblings and spouses",
-                        "Parents and children",
-                        "Ticket fare",
-                        "Port of embarkation",
-                    ],
-                    "Entered value": [
-                        f"Class {passenger['pclass']}",
-                        passenger["sex"].title(),
-                        f"{passenger['age']:g} years",
-                        str(passenger["sibsp"]),
-                        str(passenger["parch"]),
-                        f"{passenger['fare']:.2f}",
-                        {"S": "Southampton", "C": "Cherbourg", "Q": "Queenstown"}[
-                            passenger["embarked"]
-                        ],
-                    ],
-                }
-            )
-            st.dataframe(
-                passenger_summary,
-                width="stretch",
-                hide_index=True,
-                alt="Passenger details used for this survival prediction",
-            )
-        else:
-            st.info(
-                "Your prediction will appear here. Complete the passenger details "
-                "and select Predict Survival.",
-                icon=":material/info:",
-            )
+elif page == "Dataset explorer":
+    st.title("Dataset explorer")
+    st.caption(f"Loaded from `{dataset.path}`")
+    with st.container(horizontal=True):
+        st.metric("Rows", frame.shape[0], border=True)
+        st.metric("Columns", frame.shape[1], border=True)
+        st.metric("Duplicate rows", int(frame.duplicated().sum()), border=True)
+        st.metric("Missing cells", int(frame.isna().sum().sum()), border=True)
+
+    with st.container(border=True):
+        st.subheader("First five records")
+        st.dataframe(frame.head(), hide_index=True)
+    with st.container(border=True):
+        st.subheader("Column data types")
+        st.dataframe(
+            pd.DataFrame(
+                {"column": frame.columns.astype(str), "data_type": frame.dtypes.astype(str)}
+            ),
+            hide_index=True,
+        )
+    with st.container(border=True):
+        st.subheader("Missing values by column")
+        st.dataframe(
+            frame.isna().sum().rename("missing_values").to_frame(),
+            hide_index=False,
+        )
+    with st.container(border=True):
+        st.subheader("Species distribution")
+        counts = (
+            frame["species"]
+            .value_counts()
+            .rename_axis("species")
+            .reset_index(name="flower_count")
+        )
+        st.bar_chart(counts, x="species", y="flower_count", y_label="Flowers")
+    with st.container(border=True):
+        st.subheader("Measurement summary")
+        st.dataframe(frame[list(FEATURE_NAMES)].describe().T)
+
+    chart_files = (
+        ("feature_distributions.png", "Measurement distributions"),
+        ("feature_correlation_heatmap.png", "Feature correlation"),
+        ("petal_length_vs_petal_width.png", "Petal measurements by species"),
+        ("sepal_length_vs_sepal_width.png", "Sepal measurements by species"),
+        ("measurement_boxplots_by_species.png", "Measurement ranges by species"),
+    )
+    if all((CHARTS_DIR / filename).is_file() for filename, _ in chart_files):
+        for start in range(0, len(chart_files), 2):
+            chart_columns = st.columns(2)
+            for column, (filename, title) in zip(
+                chart_columns, chart_files[start : start + 2], strict=False
+            ):
+                with column:
+                    st.subheader(title)
+                    st.image(str(CHARTS_DIR / filename))
+    else:
+        st.info("Run `python eda.py` to generate the dataset visualization charts.")
 
 elif page == "Model performance":
-    render_page_heading(
-        "Model Performance",
-        "Compare the classifiers using the same held-out validation passengers.",
-    )
-
-    selected_name = artifact["model_name"]
-    selected_metrics = artifact["validation_metrics"]
-    with st.container(border=True):
-        st.subheader("Selected model")
-        selected_columns = st.columns([1.2, 1, 1.8], vertical_alignment="center")
-        selected_columns[0].metric("Model", selected_name)
-        selected_columns[1].metric(
-            "Validation ROC-AUC", f"{selected_metrics['roc_auc']:.1%}"
+    st.title("Model performance")
+    if metadata is None:
+        st.warning(
+            model_error or "Train the models with `python train.py` to see results."
         )
-        selected_columns[2].write(
-            "Selection rule: highest validation ROC-AUC; F1-score breaks ties."
+    else:
+        st.write(f"Selected model: **{metadata['selected_model']}**")
+        st.caption(metadata["model_selection_criteria"])
+        st.subheader("Held-out test-set metrics")
+        _metric_row(metadata["test_metrics"])
+        st.write(
+            "Accuracy is the share of correct predictions. Macro precision measures "
+            "prediction correctness per class; macro recall measures class coverage; "
+            "macro F1 is the harmonic mean of macro precision and recall."
         )
-
-    st.info(
-        f"{selected_name} was selected by validation ROC-AUC, not by accuracy. "
-        "These validation scores were used for model selection and are not an "
-        "independent final test estimate.",
-        icon=":material/info:",
-    )
-
-    st.subheader("Classifier comparison")
-    result_rows = artifact["model_comparison"]
-    comparison_table = pd.DataFrame(
-        [
-            {
-                "Model": result["model_name"],
-                "Selection": "Selected" if result["model_name"] == selected_name else "",
-                "ROC-AUC": f"{result['roc_auc']:.1%}",
-                "Accuracy": f"{result['accuracy']:.1%}",
-                "Precision": f"{result['precision']:.1%}",
-                "Recall": f"{result['recall']:.1%}",
-                "F1-score": f"{result['f1']:.1%}",
-            }
-            for result in result_rows
-        ]
-    )
-    st.dataframe(
-        comparison_table,
-        width="stretch",
-        hide_index=True,
-        alt="Validation metric comparison for the three classifiers",
-    )
-
-    chart_data = pd.DataFrame(result_rows).set_index("model_name")
-    st.bar_chart(
-        chart_data[["accuracy", "precision", "recall", "f1", "roc_auc"]],
-        y_label="Validation score",
-        height=320,
-        alt="Validation scores for accuracy, precision, recall, F1-score, and ROC-AUC",
-    )
-
-    st.subheader("Confusion matrices")
-    st.caption(
-        "Each matrix counts predictions on the same 179 validation passengers."
-    )
-    matrix_tabs = st.tabs(list(artifact["validation_confusion_matrices"]))
-    for (model_name, matrix), tab in zip(
-        artifact["validation_confusion_matrices"].items(), matrix_tabs
-    ):
-        with tab:
-            render_confusion_matrix(model_name, matrix)
-
-    with st.expander("How to read these evaluation metrics"):
-        st.markdown(
-            "- **Accuracy:** share of all passengers classified correctly.\n"
-            "- **Precision:** among passengers predicted to survive, the share who survived.\n"
-            "- **Recall:** among passengers who survived, the share the model identified.\n"
-            "- **F1-score:** a balance of precision and recall.\n"
-            "- **ROC-AUC:** how well the model ranks survivors above non-survivors across thresholds.\n"
-            "- **Confusion matrix:** counts correct and incorrect predictions by actual and predicted outcome."
+        st.subheader("Cross-validation versus test results")
+        st.write(
+            "Cross-validation macro F1 is calculated from folds within the training "
+            "set and guides model selection. Test metrics use the separate held-out "
+            "test set and are reported only for final evaluation."
         )
-
-elif page == "Dataset insights":
-    render_page_heading(
-        "Dataset Insights",
-        "Explore passenger demographics, ticket classes, and survival patterns in the Titanic dataset.",
-    )
-
-    try:
-        dataset = get_dataset()
-    except (OSError, ValueError) as error:
-        st.error(f"Could not load the Titanic dataset: {error}")
-        st.stop()
-
-    passenger_count = len(dataset)
-    survivor_count = int(dataset["survived"].sum())
-    non_survivor_count = passenger_count - survivor_count
-    survival_rate = survivor_count / passenger_count if passenger_count else 0.0
-    with st.container(horizontal=True):
-        st.metric("Total passengers", f"{passenger_count:,}", border=True)
-        st.metric("Survivors", f"{survivor_count:,}", border=True)
-        st.metric("Did not survive", f"{non_survivor_count:,}", border=True)
-        st.metric("Overall survival rate", f"{survival_rate:.1%}", border=True)
-
-    plot_data = dataset.copy()
-    plot_data["outcome"] = plot_data["survived"].map(
-        {0: "Did not survive", 1: "Survived"}
-    )
-    outcome_order = ["Did not survive", "Survived"]
-    outcome_colors = {"Did not survive": "#B91C1C", "Survived": "#15803D"}
-
-    first_column, second_column = st.columns(2, gap="large")
-    with first_column:
-        st.subheader("Survival distribution")
-        figure, axis = plt.subplots(figsize=(7, 4), constrained_layout=True)
-        sns.countplot(
-            data=plot_data,
-            x="outcome",
-            hue="outcome",
-            order=outcome_order,
-            hue_order=outcome_order,
-            palette=outcome_colors,
-            legend=False,
-            ax=axis,
-        )
-        axis.set_xlabel("Passenger outcome")
-        axis.set_ylabel("Passengers")
-        for container in axis.containers:
-            axis.bar_label(container, fmt="%d", padding=3)
-        st.pyplot(figure)
-        plt.close(figure)
-
-        st.subheader("Survival by passenger class")
-        figure, axis = plt.subplots(figsize=(7, 4), constrained_layout=True)
-        sns.countplot(
-            data=plot_data,
-            x="pclass",
-            hue="outcome",
-            hue_order=outcome_order,
-            palette=outcome_colors,
-            ax=axis,
-        )
-        axis.set_xlabel("Passenger class")
-        axis.set_ylabel("Passengers")
-        axis.legend(title="Outcome", loc="upper right")
-        st.pyplot(figure)
-        plt.close(figure)
-
-        st.subheader("Ticket fare distribution")
-        figure, axis = plt.subplots(figsize=(7, 4), constrained_layout=True)
-        sns.histplot(
-            data=plot_data,
-            x="fare",
-            hue="outcome",
-            hue_order=outcome_order,
-            bins=28,
-            element="step",
-            palette=outcome_colors,
-            ax=axis,
-        )
-        axis.set_xlabel("Ticket fare")
-        axis.set_ylabel("Passengers")
-        axis.legend(title="Outcome", labels=outcome_order)
-        st.pyplot(figure)
-        plt.close(figure)
-
-    with second_column:
-        st.subheader("Survival by gender")
-        figure, axis = plt.subplots(figsize=(7, 4), constrained_layout=True)
-        sns.countplot(
-            data=plot_data,
-            x="sex",
-            hue="outcome",
-            hue_order=outcome_order,
-            palette=outcome_colors,
-            ax=axis,
-        )
-        axis.set_xlabel("Gender")
-        axis.set_ylabel("Passengers")
-        axis.legend(title="Outcome", loc="upper right")
-        st.pyplot(figure)
-        plt.close(figure)
-
-        st.subheader("Age distribution")
-        figure, axis = plt.subplots(figsize=(7, 4), constrained_layout=True)
-        sns.histplot(
-            data=plot_data,
-            x="age",
-            hue="outcome",
-            hue_order=outcome_order,
-            bins=24,
-            element="step",
-            palette=outcome_colors,
-            ax=axis,
-        )
-        axis.set_xlabel("Age in years")
-        axis.set_ylabel("Passengers")
-        axis.legend(title="Outcome", labels=outcome_order)
-        st.pyplot(figure)
-        plt.close(figure)
-        st.caption("Passengers with missing ages are omitted from this chart.")
-
-        st.subheader("Missing values")
-        missing_counts = dataset.isna().sum().loc[lambda values: values > 0]
-        figure, axis = plt.subplots(figsize=(7, 4), constrained_layout=True)
-        sns.barplot(
-            x=missing_counts.index,
-            y=missing_counts.values,
-            color="#2563EB",
-            ax=axis,
-        )
-        axis.set_xlabel("Dataset field")
-        axis.set_ylabel("Missing passengers")
-        axis.tick_params(axis="x", rotation=20)
-        for container in axis.containers:
-            axis.bar_label(container, fmt="%d", padding=3)
-        st.pyplot(figure)
-        plt.close(figure)
-
-    with st.expander("Preview the source dataset"):
+        if COMPARISON_PATH.is_file():
+            comparison = cached_comparison(
+                str(COMPARISON_PATH), _file_revision(COMPARISON_PATH)
+            )
+            st.dataframe(comparison, hide_index=True)
+        else:
+            st.warning("The comparison report is missing. Run `python train.py` again.")
+        confusion_chart = CHARTS_DIR / "selected_model_confusion_matrix.png"
+        if confusion_chart.is_file():
+            st.image(str(confusion_chart), caption="Selected model test-set confusion matrix")
+        st.subheader("Classification report")
         st.dataframe(
-            dataset.head(10),
-            width="stretch",
-            hide_index=True,
-            alt="First ten rows of the Titanic passenger dataset",
+            pd.DataFrame(metadata["test_metrics"]["classification_report"]).T,
+            hide_index=False,
         )
+
+elif page == "About":
+    st.title("About this project")
+    st.write(
+        "The objective is to classify Iris flowers from their sepal and petal "
+        "measurements using supervised multiclass learning."
+    )
+    st.subheader("Dataset and schema")
+    st.write(
+        f"The application uses `{dataset.path.name}` from the local project folder. "
+        "Its provenance is not documented in the supplied file. Four measurement "
+        "columns are mapped to the canonical input order; the species label is the "
+        "target. Identifier and other unrelated columns are never model inputs."
+    )
+    st.write(", ".join(FEATURE_LABELS[name] for name in FEATURE_NAMES))
+    st.subheader("Algorithms evaluated")
+    st.write(
+        "Dummy classifier, logistic regression, K-nearest neighbors, decision tree, "
+        "random forest, and support vector machine."
+    )
+    st.subheader("Preprocessing and evaluation")
+    st.write(
+        "Missing measurement values are median-imputed inside each model pipeline. "
+        "Imputation and scaling are fitted only on training data. Logistic regression, "
+        "KNN, and SVM use standardized measurements; tree models do not. Macro "
+        "precision, recall, and F1 give each species equal weight."
+    )
+    st.subheader("Limitations and future work")
+    st.write(
+        "This is a small, classic dataset and its provenance and measurement units "
+        "are not specified by the supplied file. Test metrics can vary with a "
+        "different split and are not a guarantee for future flowers. Future work "
+        "could add external validation, more labeled samples, and model calibration."
+    )
