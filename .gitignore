@@ -1,17 +1,38 @@
+# Python virtual environments
+
 .venv/
+.venv-*/
 venv/
-__pycache__/
+env/
+
+# Python cache and test files
+
+**/__pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Environment variables and secrets
+
 .env
 .env.*
-.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+
+# IDE files
+
 .idea/
+.vscode/
+
+# Temporary and log files
+
 *.swp
 *.swo
 *.log
+*.tmp
+
+# Operating system files
+
 .DS_Store
 Thumbs.db
 desktop.ini

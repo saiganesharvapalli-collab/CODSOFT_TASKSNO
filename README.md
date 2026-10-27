@@ -1,183 +1,82 @@
-# Iris Flower Classification Using Python and Machine Learning
+# CODSOFT Tasks
 
-A beginner-friendly supervised-learning project that validates the supplied Iris
-dataset, explores it, compares six classifiers, and provides an interactive
-Streamlit application for species predictions.
+This repository contains three machine learning projects completed as part of my CODSOFT tasks. Each project demonstrates data preprocessing, exploratory data analysis, model training, evaluation, and prediction.
 
-## Objectives and features
+## Projects
 
-- Inspect and validate the local labeled dataset without replacing or editing it.
-- Explore its measurements, species balance, missing values, duplicates, and charts.
-- Compare a dummy baseline with five scikit-learn classification algorithms.
-- Select the model using training-only stratified cross-validation when supported.
-- Report final metrics on a separate held-out test set.
-- Predict species from four user-entered measurements in a Streamlit dashboard.
-- Keep preprocessing (median imputation and, where appropriate, scaling) inside
-  model pipelines so learned transformations use training data only.
+### Task 1: Iris Flower Classification
 
-## Technology
+**Objective:** Predict the species of an Iris flower using its physical measurements.
 
-Python 3.10+, pandas, NumPy, scikit-learn, Streamlit, Matplotlib, Seaborn, joblib,
-and pytest. The inspected interpreter for this workspace is Python 3.12.10.
+* **Dataset:** Iris flower dataset (`IRIS.csv`)
+* **Technologies:** Python, Pandas, NumPy, Scikit-learn, Streamlit
+* **Task:** Classification
+* **Features:** Data visualization, model evaluation, and flower species prediction.
 
-## Dataset
+[View Task 1](./Task-1-Iris-Flower-Classification/)
 
-- **File:** `data/IRIS.csv`
-- **Workspace location:** `C:\Users\saiga\OneDrive\Desktop\Iris-Flower-Classification\data\IRIS.csv`
-- **Provenance:** supplied in the project workspace; the file does not document its
-  publisher or source, so no external provenance is claimed.
-- **Shape:** 150 rows × 5 columns.
-- **Source columns:** `sepal_length`, `sepal_width`, `petal_length`,
-  `petal_width`, and `species`.
-- **Model inputs (in order):** sepal length, sepal width, petal length, petal width.
-- **Target:** `species` (Iris-setosa, Iris-versicolor, Iris-virginica).
-- **Units:** the source column names do not specify units; the interface does not
-  label measurements with an assumed unit.
+### Task 2: Movie Rating Prediction
 
-The source contains three exact duplicate rows and no missing values. Duplicates
-are reported but retained so the original dataset and observed sample counts are
-preserved. Case and surrounding whitespace in species labels are normalized for
-consistent training. If measurement values are missing, their medians are learned
-inside each training pipeline; invalid non-numeric or infinite values are rejected.
-Identifier columns are detected and excluded, and all other non-feature columns
-are ignored for model inputs. The target is never included as a feature.
+**Objective:** Analyze movie data and build a machine learning model to predict movie ratings.
 
-## Project structure
+* **Dataset:** IMDb Movies India dataset
+* **Technologies:** Python, Pandas, NumPy, Scikit-learn, Streamlit
+* **Task:** Regression
+* **Features:** Exploratory data analysis, model comparison, and rating prediction.
+
+[View Task 2](./Task-2-Movie-Rating-Prediction/)
+
+### Task 3: Titanic Survival Prediction
+
+**Objective:** Predict whether a Titanic passenger survived based on passenger information.
+
+* **Dataset:** Titanic dataset (`Titanic-Dataset.csv`)
+* **Technologies:** Python, Pandas, NumPy, Scikit-learn, Streamlit
+* **Task:** Binary classification
+* **Features:** Data analysis, model comparison, performance evaluation, and survival prediction.
+
+[View Task 3](./Task-3-Titanic-Survival-Prediction/)
+
+## Repository Structure
 
 ```text
-.
-├── app.py
-├── eda.py
-├── model_utils.py
-├── train.py
-├── requirements.txt
-├── README.md
-├── data/
-│   └── IRIS.csv
-├── models/
-│   ├── best_model.pkl
-│   └── model_metadata.json
-├── outputs/
-│   └── charts/
-├── reports/
-│   └── model_comparison.csv
-└── tests/
-    └── test_model.py
+CODSOFT_TASKSNO/
+├── Task-1-Iris-Flower-Classification/
+├── Task-2-Movie-Rating-Prediction/
+├── Task-3-Titanic-Survival-Prediction/
+└── README.md
 ```
 
-## Algorithms and evaluation
+Each project folder contains its own source code, dataset, model artifacts, and project documentation where applicable.
 
-The project evaluates a most-frequent Dummy Classifier, Logistic Regression,
-K-Nearest Neighbors, Decision Tree, Random Forest, and an RBF Support Vector
-Machine. Logistic Regression, KNN, and SVM use standard scaling; tree models do
-not. All pipelines use median imputation fitted on training data.
+## Setup and Execution
 
-The fixed random seed is 42, and the test split is 20%. Stratification and
-stratified cross-validation are used when the class counts support them. Macro
-precision, recall, and F1-score give each species equal weight. The comparison
-report contains cross-validation scores and held-out test metrics; only the
-cross-validation score guides selection. When CV scores are within 0.01 of the
-best score, the simpler/more interpretable model is preferred using the stated
-priority in the model metadata. Test-set scores are not used to select the model.
+1. Install Python 3.10 or a compatible version supported by the project's dependencies.
+2. Open the folder of the project you want to run.
+3. Create and activate a virtual environment.
+4. Install the dependencies listed in that project's `requirements.txt`.
+5. Follow the project's README for dataset preparation, model training, and application execution.
 
-### Actual model comparison
-
-Generated by running `python train.py` against the local dataset; values are
-recorded in `reports/model_comparison.csv` and `models/model_metadata.json`.
-Cross-validation scores shown here are for training data; test metrics are from
-the untouched held-out split.
-
-<!-- ACTUAL_RESULTS_START -->
-| Model | Training CV macro F1 | Test accuracy | Test macro precision | Test macro recall | Test macro F1 |
-|---|---:|---:|---:|---:|---:|
-| Support vector machine | 0.967 | 0.967 | 0.970 | 0.967 | 0.967 |
-| Logistic regression | 0.958 | 0.933 | 0.933 | 0.933 | 0.933 |
-| K-nearest neighbors | 0.958 | 0.933 | 0.944 | 0.933 | 0.933 |
-| Decision tree | 0.950 | 0.933 | 0.933 | 0.933 | 0.933 |
-| Random forest | 0.949 | 0.900 | 0.902 | 0.900 | 0.900 |
-| Dummy classifier | 0.167 | 0.333 | 0.111 | 0.333 | 0.167 |
-
-The selected model is **Logistic regression**. The SVM had the highest mean
-training CV macro F1 (0.9665); logistic regression scored 0.9580, within the
-documented 0.01 tie margin, so the simpler and more interpretable model was
-preferred. On the held-out 30-row test set, its accuracy, macro precision, macro
-recall, and macro F1 were each **0.9333**. Its confusion matrix, with rows/columns
-ordered setosa, versicolor, virginica, was `[[10, 0, 0], [0, 9, 1], [0, 1, 9]]`.
-These values were generated by the actual `train.py` run and are stored at full
-precision in the report and metadata.
-<!-- ACTUAL_RESULTS_END -->
-
-## Installation (Windows PowerShell)
-
-From the project directory:
+Example commands for Windows PowerShell:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-If PowerShell blocks activation for the current session, run:
+If the project uses Streamlit, run its application with:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
+streamlit run app.py
 ```
 
-## Run the project
+Run these commands from the individual project directory, not from the repository root.
 
-```powershell
-python train.py
-python eda.py
-python -m pytest -q
-python -m streamlit run app.py
-```
+## Purpose
 
-`train.py` finds the single supported dataset in `data/` or the project root,
-validates its schema, trains and evaluates each candidate, then writes the real
-model, metadata, report, and performance chart. If more than one candidate data
-file exists, specify the path in code using `load_dataset(path)` or move unrelated
-tabular files outside the dataset search locations rather than allowing an
-ambiguous automatic choice.
+This repository showcases practical applications of machine learning, including classification, regression, exploratory data analysis, model evaluation, and interactive prediction applications.
 
-`eda.py` prints the dataset summary and saves distribution, correlation, scatter,
-and box plots in `outputs/charts/`. The Streamlit dashboard is navigated from its
-sidebar and includes Home, Predict species, Dataset explorer, Model performance,
-and About sections.
+## Author
 
-## Automated tests
-
-Run:
-
-```powershell
-python -m pytest -q
-```
-
-The tests cover actual-dataset loading and training, schema variations, class
-labels, missing and invalid values, prediction input order, model and metadata
-persistence, probabilities, and missing/corrupt artifact errors.
-
-## Common issues
-
-- **Missing Python packages:** activate `.venv` and run
-  `python -m pip install -r requirements.txt`.
-- **No model or metadata:** run `python train.py` from this folder, then refresh
-  the Streamlit page. The app does not train automatically.
-- **Port 8501 is already in use:** start this app on another port with
-  `python -m streamlit run app.py --server.port 8502`.
-- **No dataset / ambiguous datasets:** put one supported labeled dataset in
-  `data/`; if multiple datasets are present, leave only the intended Iris file in
-  the search locations.
-- **Unrecognized schema or unlabeled rows:** rename the four measurement columns
-  to standard Iris names and provide a species/class/target column. Supervised
-  training cannot proceed when target labels are absent.
-- **Unreadable Excel/Parquet file:** install the corresponding reader package in
-  the project environment before using that format.
-
-## Limitations and future work
-
-This is a small dataset, its file does not document its source or measurement
-units, and a single held-out split gives only one estimate of generalization.
-Model probabilities are estimates and predictions are not guaranteed. Possible
-extensions include external validation, more labeled observations, probability
-calibration, and user-selectable models.
+**CODSOFT Tasks — Machine Learning Projects**
