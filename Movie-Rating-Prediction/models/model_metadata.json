@@ -1,0 +1,28 @@
+{
+  "target_column": "Rating",
+  "input_feature_columns": [
+    "Year",
+    "Duration",
+    "Genre",
+    "Director",
+    "Actor 1",
+    "Actor 2",
+    "Actor 3"
+  ],
+  "selected_model_name": "GradientBoostingRegressor",
+  "random_seed": 42,
+  "dataset_row_count": 15509,
+  "valid_target_row_count": 7919,
+  "training_row_count": 6335,
+  "test_row_count": 1584,
+  "evaluation_metrics": {
+    "Validation_MAE": 0.9733959891104813,
+    "Validation_RMSE": 1.2464100181718007,
+    "Validation_R2": 0.1912815436403822,
+    "Test_MAE": 0.9314344502996303,
+    "Test_RMSE": 1.1958212722373887,
+    "Test_R2": 0.23083546094672824
+  },
+  "training_timestamp": "2026-10-27T17:15:09.213911",
+  "feature_engineering_description": "Parsed year from strings like '(2019)', duration from strings like '109 min', handled missing numeric values, filled unknown categorical labels, and encoded genre via multi-label binarization."
+}
